@@ -48,7 +48,7 @@ public class Main
         /**
          Only UnifiedJedis allows for auto-failover behaviors
          If --failover true is NOT passed in, a JedisPooled will be created
-         ^ this is good, allowing
+         ^ this is good, and allows for the best pooled connection management while also allowing
          the creation of the failover-capable UnifiedJedis when that is desired
          **/
         UnifiedJedis connection= JedisConnectionHelper.initRedisConnection(args);
@@ -67,6 +67,8 @@ public class Main
                 params = new redis.clients.jedis.params.ZRangeParams(min,max);
                 connection.zadd(connection+":key",x,connection+":"+x);
                 System.out.println( connection.zrange(connection+":key",params));
+                safeIncrement(connection,"testIncrString","1",""+System.nanoTime());
+                safeIncrement(connection,"testIncrString","2",""+System.nanoTime());
                 try {
                     Thread.sleep(2000);
                 } catch(Throwable t) {
@@ -77,6 +79,37 @@ public class Main
             }
         }
     }
+
+    static void safeIncrement(UnifiedJedis jedis,String stringKeyName, String routingValue, String uuid) {
+        //SortedSet API offers ZCARD and ZCOUNT:
+        //stringKeyName is the String being incremented
+        //routingValue is the value added to the string keyname to route it to a slot in redis
+        // a co-located SortedSet key is derived from that string keyname and routingValue
+        //if string keyname is bob and routingValue is 1 sortedSet keyname is z:bob{1}
+        //args to script are:
+        //routingValue, (used to route execution of the script to a shard)
+        //stringKeyName,
+        //uuid for current update attempt,
+        //incr_amnt (in case we don't just want to add a single integer to the string counter)
+        //this script removed any entries stored in the SortedSet that are older than
+        //current time in seconds - 100 seconds
+        String luaScript =
+                "local stringKeyNameWithRouting = ARGV[1]..'{'..KEYS[1]..'}' "+
+                        "local ssname = 'z:'..stringKeyNameWithRouting "+
+                        "local uuid = ARGV[2] "+
+                        "local incr_amnt = ARGV[3] "+
+                        "local ts_score = redis.call('TIME')[1] "+
+                        "local result = 'duplicate [fail]' "+
+                        "if redis.call('ZINCRBY',ssname,ts_score,uuid) == ts_score then "+
+                        "redis.call('incrby',stringKeyNameWithRouting,incr_amnt) "+
+                        "redis.call('ZREMRANGEBYRANK', ssname, (ts_score-100), 0) "+
+                        "result = 'success' end return {ssname,result}";
+        long timestamp = System.currentTimeMillis();
+        Object luaResponse = jedis.eval(luaScript,1,routingValue,stringKeyName,""+uuid,"100");
+        System.out.println("\nResults from Lua: [SortedSetKeyName] [result]  \n"+luaResponse);
+        System.out.println("\n\nrunning the lua script with dedup and incr logic took "+(System.currentTimeMillis()-timestamp+" milliseconds"));
+    }
+
 }
 
 class JedisConnectionHelper {
@@ -377,7 +410,7 @@ class JedisConnectionHelperSettings {
     private int redisPort = 6379;
     private String userName = "default";
     private String password = "";
-    private int maxConnections = 2;
+    private int maxConnections = 1;
     private int connectionTimeoutMillis = 2000;
     private int requestTimeoutMillis = 2000;
     private int poolMaxIdle = 500;
@@ -620,6 +653,6 @@ class FailoverReporter implements Consumer<String> {
     @Override
     public void accept(String clusterName) {
         this.currentClusterName=clusterName;
-        System.out.println("Jedis failover to cluster: " + clusterName);
+        System.out.println("<< FailoverReporter >>\nJedis failover to cluster: " + clusterName+"\n<< FailoverReporter >>");
     }
 }
