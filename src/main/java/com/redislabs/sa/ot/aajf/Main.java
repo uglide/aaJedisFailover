@@ -377,7 +377,7 @@ class JedisConnectionHelperSettings {
     private int redisPort = 6379;
     private String userName = "default";
     private String password = "";
-    private int maxConnections = 1000;
+    private int maxConnections = 2;
     private int connectionTimeoutMillis = 2000;
     private int requestTimeoutMillis = 2000;
     private int poolMaxIdle = 500;
