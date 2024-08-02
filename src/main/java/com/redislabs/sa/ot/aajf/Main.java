@@ -4,6 +4,9 @@ import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import redis.clients.jedis.*;
 import redis.clients.jedis.providers.PooledConnectionProvider;
 
+import redis.clients.jedis.exceptions.JedisDataException;
+import redis.clients.jedis.exceptions.JedisConnectionException;
+
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocketFactory;
@@ -60,24 +63,35 @@ public class Main
         //public ZRangeParams(double min, double max) <-- byscore is implicit with this constructor
         double min = 0; double max = 5000;
         redis.clients.jedis.params.ZRangeParams params = null;
-
-        for (int x = 1; x<101; x++){
+        long opssCounter = 0;
+        long targetOppsCount = 10000;
+        long startTime = System.currentTimeMillis();
+        for (int x = 1; x<(targetOppsCount+1); x++){
             try{
                 min = x;
                 params = new redis.clients.jedis.params.ZRangeParams(min,max);
                 connection.zadd(connection+":key",x,connection+":"+x);
-                System.out.println( connection.zrange(connection+":key",params));
+                //System.out.println( );
+                connection.zrange(connection+":key",params);
                 safeIncrement(connection,"testIncrString","1",""+System.nanoTime());
                 safeIncrement(connection,"testIncrString","2",""+System.nanoTime());
+                opssCounter++;
+                // throw a DataException to cause failover See lines 353-357 or so where DataException is added
+                // you may not want that behavior...
+                if(opssCounter==1000){
+                    connection.set("x", "y");
+                    connection.incr("x");
+                }
+            }catch(Throwable ste){
+                ste.printStackTrace();
                 try {
                     Thread.sleep(2000);
                 } catch(Throwable t) {
                     t.printStackTrace();
                 }
-            }catch(Throwable ste){
-                ste.printStackTrace();
             }
         }
+        System.out.println("\n\nTime taken to execute "+opssCounter + " was "+((System.currentTimeMillis()-startTime)/1000)+" seconds");
     }
 
     static void safeIncrement(UnifiedJedis jedis,String stringKeyName, String routingValue, String uuid) {
@@ -106,8 +120,8 @@ public class Main
                         "result = 'success' end return {ssname,result}";
         long timestamp = System.currentTimeMillis();
         Object luaResponse = jedis.eval(luaScript,1,routingValue,stringKeyName,""+uuid,"100");
-        System.out.println("\nResults from Lua: [SortedSetKeyName] [result]  \n"+luaResponse);
-        System.out.println("\n\nrunning the lua script with dedup and incr logic took "+(System.currentTimeMillis()-timestamp+" milliseconds"));
+        //System.out.println("\nResults from Lua: [SortedSetKeyName] [result]  \n"+luaResponse);
+        //System.out.println("\n\nrunning the lua script with dedup and incr logic took "+(System.currentTimeMillis()-timestamp+" milliseconds"));
     }
 
 }
@@ -336,7 +350,12 @@ class JedisConnectionHelper {
         builder.circuitBreakerSlidingWindowSize(1);
         builder.circuitBreakerSlidingWindowMinCalls(1);
         builder.circuitBreakerFailureRateThreshold(50.0f);
-        builder.retryMaxAttempts(1);
+
+        java.util.List<java.lang.Class> circuitBreakerList = new ArrayList<java.lang.Class>();
+        circuitBreakerList.add(JedisConnectionException.class);
+        circuitBreakerList.add(JedisDataException.class);
+        builder.circuitBreakerIncludedExceptionList(circuitBreakerList);
+        builder.retryMaxAttempts(0);
 
         MultiClusterPooledConnectionProvider provider = new MultiClusterPooledConnectionProvider(builder.build());
         FailoverReporter reporter = new FailoverReporter();
@@ -410,7 +429,7 @@ class JedisConnectionHelperSettings {
     private int redisPort = 6379;
     private String userName = "default";
     private String password = "";
-    private int maxConnections = 1;
+    private int maxConnections = 10;
     private int connectionTimeoutMillis = 2000;
     private int requestTimeoutMillis = 2000;
     private int poolMaxIdle = 500;
