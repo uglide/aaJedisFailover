@@ -355,7 +355,7 @@ class JedisConnectionHelper {
         circuitBreakerList.add(JedisConnectionException.class);
         circuitBreakerList.add(JedisDataException.class);
         builder.circuitBreakerIncludedExceptionList(circuitBreakerList);
-        builder.retryMaxAttempts(0);
+        builder.retryMaxAttempts(1);
 
         MultiClusterPooledConnectionProvider provider = new MultiClusterPooledConnectionProvider(builder.build());
         FailoverReporter reporter = new FailoverReporter();
