@@ -46,6 +46,7 @@ public class TestMultiThread implements Runnable{
         for(int x=0;x<howManyMessages;x++){
             String connectionInstance = ""+connectionPool;
             connectionPool.publish("ps:Messages",connectionInstance+":testThread# "+this.testThreadNumber+" message #"+x);
+            connectionPool.set("tmt:String", ""+x);
             try{
                 Thread.sleep(20);
             }catch(Throwable t){
@@ -54,8 +55,8 @@ public class TestMultiThread implements Runnable{
             if(x>1000){
                 if(!exceptionCaught){
                     try{
-                        connectionPool.set("x", "y");
-                        connectionPool.incr("x");
+                        connectionPool.set("tmt:String", "y");
+                        connectionPool.incr("tmt:String");
                     }catch(Throwable tt){
                         exceptionCaught=true;
                     }
