@@ -64,8 +64,9 @@ public class Main
         double min = 0; double max = 5000;
         redis.clients.jedis.params.ZRangeParams params = null;
         long opssCounter = 0;
-        long targetOppsCount = 10000;
+        long targetOppsCount = 2000;
         long startTime = System.currentTimeMillis();
+        TestMultiThread.fireTest(connection,10, "10ThreadTest", 3000);
         for (int x = 1; x<(targetOppsCount+1); x++){
             try{
                 min = x;
@@ -77,11 +78,11 @@ public class Main
                 safeIncrement(connection,"testIncrString","2",""+System.nanoTime());
                 opssCounter++;
                 // throw a DataException to cause failover See lines 353-357 or so where DataException is added
-                // you may not want that behavior...
+                /* you may not want that behavior...
                 if(opssCounter==1000){
                     connection.set("x", "y");
                     connection.incr("x");
-                }
+                }*/
             }catch(Throwable ste){
                 ste.printStackTrace();
                 try {
