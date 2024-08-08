@@ -41,3 +41,7 @@ A sample run of this program where two instances of Redis are utilized would be:
 ``` 
 mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--failover true --host mydb.host.1.org --port 10900 --password pass1 --host2 mydb.host.2.org --port2 10900 --password2 pass2"
 ```
+And with additional logging of the underlying circuitBreaker logic:
+``` 
+mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--failover true --host mydb.host.1.org --port 10900 --host2 mydb.host.2.org --port2 10900" -Dorg.slf4j.simpleLogger.log.redis.clients.jedis=TRACE
+```
