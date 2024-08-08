@@ -51,14 +51,23 @@ public class TestMultiThread implements Runnable{
 
     @Override
     public void run() {
+        boolean shouldAnounceDeltaBetweenException = false;
+        long exceptionTimeStamp = 0;
         for(int x=0;x<howManyMessages;x++){
             String connectionName = ""+connectionInstance;
             try{
                 connectionInstance.publish("ps:Messages",connectionName+":testThread# "+this.testThreadNumber+" message #"+x);
                 connectionInstance.set("tmt:string", ""+x);
+
+                if (shouldAnounceDeltaBetweenException) {
+                    System.out.println("THREAD "+this.testThreadNumber+" First Succesful write after exception delay in millis was...: "+(System.currentTimeMillis()-exceptionTimeStamp));
+                    shouldAnounceDeltaBetweenException=false;
+                }
             }catch(redis.clients.jedis.exceptions.JedisConnectionException jce){
                 System.out.println("THREAD "+this.testThreadNumber+" CAUGHT: JedisConnectionException ");
                 x--; // keep trying to do the next thing
+                shouldAnounceDeltaBetweenException=true;
+                exceptionTimeStamp=System.currentTimeMillis();
             }
             try{
                 Thread.sleep(20);
