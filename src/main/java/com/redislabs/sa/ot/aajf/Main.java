@@ -64,9 +64,10 @@ public class Main
         double min = 0; double max = 5000;
         redis.clients.jedis.params.ZRangeParams params = null;
         long opssCounter = 0;
-        long targetOppsCount = 2000;
+        long targetOppsCount = 200;
+        TestMultiThread.fireTest(connection,100, "100ThreadTest", 150);
         long startTime = System.currentTimeMillis();
-        TestMultiThread.fireTest(connection,10, "10ThreadTest", 3000);
+
         for (int x = 1; x<(targetOppsCount+1); x++){
             try{
                 min = x;
@@ -92,7 +93,7 @@ public class Main
                 }
             }
         }
-        System.out.println("\n\nTime taken to execute "+opssCounter + " was "+((System.currentTimeMillis()-startTime)/1000)+" seconds");
+        System.out.println("\n\nTime taken to execute "+opssCounter + " lua calls was "+((System.currentTimeMillis()-startTime)/1000)+" seconds");
     }
 
     static void safeIncrement(UnifiedJedis jedis,String stringKeyName, String routingValue, String uuid) {
@@ -191,7 +192,7 @@ class JedisConnectionHelper {
             isFailover = Boolean.parseBoolean(argList.get(argIndex + 1));
         }
         settings.setTestOnBorrow(true);
-        settings.setConnectionTimeoutMillis(120000);
+        settings.setConnectionTimeoutMillis(1200);
         settings.setNumberOfMinutesForWaitDuration(1);
         settings.setNumTestsPerEvictionRun(10);
         settings.setPoolMaxIdle(1); //this means less stale connections
@@ -350,12 +351,14 @@ class JedisConnectionHelper {
         Builder builder = new Builder(clientConfigs);
         builder.circuitBreakerSlidingWindowSize(1);
         builder.circuitBreakerSlidingWindowMinCalls(1);
-        builder.circuitBreakerFailureRateThreshold(50.0f);
+        builder.circuitBreakerFailureRateThreshold(100.0f);
 
         java.util.List<java.lang.Class> circuitBreakerList = new ArrayList<java.lang.Class>();
         circuitBreakerList.add(JedisConnectionException.class);
-        circuitBreakerList.add(JedisDataException.class);
+        //circuitBreakerList.add(JedisDataException.class);
+        //circuitBreakerList.add(java.net.SocketTimeoutException.class);
         builder.circuitBreakerIncludedExceptionList(circuitBreakerList);
+        builder.retryWaitDuration(10);
         builder.retryMaxAttempts(1);
 
         MultiClusterPooledConnectionProvider provider = new MultiClusterPooledConnectionProvider(builder.build());
@@ -430,7 +433,7 @@ class JedisConnectionHelperSettings {
     private int redisPort = 6379;
     private String userName = "default";
     private String password = "";
-    private int maxConnections = 10;
+    private int maxConnections = 500;
     private int connectionTimeoutMillis = 2000;
     private int requestTimeoutMillis = 2000;
     private int poolMaxIdle = 500;
