@@ -195,9 +195,9 @@ class JedisConnectionHelper {
         settings.setConnectionTimeoutMillis(1200);
         settings.setNumberOfMinutesForWaitDuration(1);
         settings.setNumTestsPerEvictionRun(10);
-        settings.setPoolMaxIdle(1); //this means less stale connections
+        settings.setPoolMaxIdle(5); //this means less stale connections
         settings.setPoolMinIdle(0);
-        settings.setRequestTimeoutMillis(12000);
+        settings.setRequestTimeoutMillis(1200);
         settings.setTestOnReturn(false); // if idle, they will be mostly removed anyway
         settings.setTestOnCreate(true);
 
@@ -349,7 +349,7 @@ class JedisConnectionHelper {
         clientConfigs[1] = new redis.clients.jedis.MultiClusterClientConfig.ClusterConfig(new HostAndPort(bs2.getRedisHost(), bs2.getRedisPort()), config2);
 
         Builder builder = new Builder(clientConfigs);
-        builder.circuitBreakerSlidingWindowSize(1);
+        builder.circuitBreakerSlidingWindowSize(10);
         builder.circuitBreakerSlidingWindowMinCalls(1);
         builder.circuitBreakerFailureRateThreshold(100.0f);
 
@@ -433,11 +433,11 @@ class JedisConnectionHelperSettings {
     private int redisPort = 6379;
     private String userName = "default";
     private String password = "";
-    private int maxConnections = 500;
-    private int connectionTimeoutMillis = 2000;
-    private int requestTimeoutMillis = 2000;
-    private int poolMaxIdle = 500;
-    private int poolMinIdle = 50;
+    private int maxConnections = 5; // these are best shared
+    private int connectionTimeoutMillis = 1000;
+    private int requestTimeoutMillis = 200;
+    private int poolMaxIdle = 5;
+    private int poolMinIdle = 0;
     private int numberOfMinutesForWaitDuration = 1;
     private boolean testOnCreate = true;
     private boolean testOnBorrow = true;

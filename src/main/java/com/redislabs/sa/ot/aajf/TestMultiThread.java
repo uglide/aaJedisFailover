@@ -31,11 +31,12 @@ public class TestMultiThread implements Runnable{
         }
         int completedThreads = 0;
         while(completedThreads < howManyThreads){
+            int completedThreadsMark = completedThreads;
             try {
                 Thread.sleep(1000);
                 if(ufJedis.exists("TestMultiThread:"+testType+"Threads:Complete")){
                     completedThreads = Integer.parseInt(ufJedis.get("TestMultiThread:"+testType+"Threads:Complete"));
-                    if(completedThreads%10==0){
+                    if(completedThreads>completedThreadsMark){
                         System.out.println(completedThreads+" threads have completed their work...");
                     }
                 }
