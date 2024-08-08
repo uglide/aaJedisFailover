@@ -45,3 +45,10 @@ And with additional logging of the underlying circuitBreaker logic:
 ``` 
 mvn compile exec:java -Dexec.cleanupDaemonThreads=false -Dexec.args="--failover true --host mydb.host.1.org --port 10900 --host2 mydb.host.2.org --port2 10900" -Dorg.slf4j.simpleLogger.log.redis.clients.jedis=TRACE
 ```
+
+Note that the multThreaded test publishes to a pubsub channel it is good to listen in and watch as it pauses and resumes during a failover event
+* from redis-cli (once you are connected to the backup database) issue:
+``` 
+subscribe ps:Messages
+```
+Then, disable, kill the first database and watch as the messages pause and then pick up again as the client threads failover
