@@ -1,5 +1,6 @@
 package com.redislabs.sa.ot.aajf;
 
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import redis.clients.jedis.*;
 import redis.clients.jedis.providers.PooledConnectionProvider;
@@ -60,7 +61,7 @@ public class Main
         System.out.println( connection.toString());
         System.out.println("Starting Failover Test, writing to first cluster");
 
-        int numberOfThreads = 10;
+        int numberOfThreads = 100;
         int taskCountPerThread = 1500;
         TestMultiThread.fireTest(connection,numberOfThreads, numberOfThreads+"ThreadTest", taskCountPerThread);
         //end MultiThreadTest
@@ -225,10 +226,16 @@ class JedisConnectionHelper {
                 settings2.setPassword(argList.get(argIndex + 1));
                 settings2.setUsePassword(true);
             }
+            boolean timeBasedFailover = false;
+            if (argList.contains("--timebasedfailover")) {
+                int argIndex = argList.indexOf("--timebasedfailover");
+                timeBasedFailover = Boolean.parseBoolean(argList.get(argIndex + 1));
+            }
+
             JedisConnectionHelper failoverHelper = null;
             try{
                 // only use a single connection based on the hostname (not ipaddress) if possible
-                failoverHelper = new JedisConnectionHelper(settings,settings2);
+                failoverHelper = new JedisConnectionHelper(settings,settings2, timeBasedFailover);
             }catch(Throwable t){
                 t.printStackTrace();
                 try{
@@ -236,7 +243,7 @@ class JedisConnectionHelper {
                 }catch(InterruptedException ie){}
                 // give it another go - in case the first attempt was just unlucky:
                 // only use a single connection based on the hostname (not ipaddress) if possible
-                failoverHelper = new JedisConnectionHelper(settings,settings2);
+                failoverHelper = new JedisConnectionHelper(settings,settings2, timeBasedFailover);
             }
             return failoverHelper.getUnifiedJedis();
         }
@@ -337,7 +344,8 @@ class JedisConnectionHelper {
         return sslContext.getSocketFactory();
     }
 
-    public JedisConnectionHelper(JedisConnectionHelperSettings bs, JedisConnectionHelperSettings bs2){
+    public JedisConnectionHelper(JedisConnectionHelperSettings bs,
+        JedisConnectionHelperSettings bs2, boolean timeBasedFailover) {
         System.out.println("Creating JedisConnectionHelper for failover with "+bs+" \nand\n "+bs2);
         // no SSL yet
         JedisClientConfig config = null;
@@ -354,10 +362,18 @@ class JedisConnectionHelper {
         clientConfigs[1] = new redis.clients.jedis.MultiClusterClientConfig.ClusterConfig(new HostAndPort(bs2.getRedisHost(), bs2.getRedisPort()), config2);
 
         Builder builder = new Builder(clientConfigs);
-        builder.circuitBreakerSlidingWindowSize(10);
-        // sliding window size should be less than connection pool size
-        builder.circuitBreakerSlidingWindowMinCalls(1);
-        builder.circuitBreakerFailureRateThreshold(1.0f); //This has What impact?
+
+        if (timeBasedFailover) {
+            builder.circuitBreakerSlidingWindowType(CircuitBreakerConfig.SlidingWindowType.TIME_BASED);
+            builder.circuitBreakerSlidingWindowSize(1); // SLIDING WINDOW SIZE IN SECONDS
+            builder.circuitBreakerSlidingWindowMinCalls(1);
+            builder.circuitBreakerFailureRateThreshold(10.0f); // percentage of failures to trigger circuit breaker
+        } else {
+            builder.circuitBreakerSlidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED);
+            builder.circuitBreakerSlidingWindowSize(10); // SLIDING WINDOW SIZE IN CALLS
+            builder.circuitBreakerSlidingWindowMinCalls(1);
+            builder.circuitBreakerFailureRateThreshold(10.0f); // percentage of failures to trigger circuit breaker
+        }
 
         java.util.List<java.lang.Class> circuitBreakerList = new ArrayList<java.lang.Class>();
         circuitBreakerList.add(JedisConnectionException.class);
@@ -367,9 +383,6 @@ class JedisConnectionHelper {
         builder.retryWaitDuration(10);
         builder.retryMaxAttempts(1); //edited by Owen back to 1 Aug 8 8:39 AM Central
         builder.retryWaitDurationExponentialBackoffMultiplier(1);
-
-
-        //builder.circuitBreakerSlidingWindowType();
 
         MultiClusterPooledConnectionProvider provider = new MultiClusterPooledConnectionProvider(builder.build());
         FailoverReporter reporter = new FailoverReporter();
