@@ -45,8 +45,8 @@ public class TestMultiThread implements Runnable{
             }
         }
         System.out.println("\n\n*****************\n" +
-                testType+":Test took :"+((System.currentTimeMillis()-startTime)/1000)+" seconds" +
-                "\n"+testType+":TEST IS COMPLETE... ");
+            testType+":Test took :"+((System.currentTimeMillis()-startTime)/1000)+" seconds" +
+            "\n"+testType+":TEST IS COMPLETE... ");
     }
 
     @Override

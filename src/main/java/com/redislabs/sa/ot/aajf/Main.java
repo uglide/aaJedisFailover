@@ -60,12 +60,17 @@ public class Main
         System.out.println( connection.toString());
         System.out.println("Starting Failover Test, writing to first cluster");
 
+        int numberOfThreads = 10;
+        int taskCountPerThread = 1500;
+        TestMultiThread.fireTest(connection,numberOfThreads, numberOfThreads+"ThreadTest", taskCountPerThread);
+        //end MultiThreadTest
+
+        //Do some LUA calls using SortedSets:
         //public ZRangeParams(double min, double max) <-- byscore is implicit with this constructor
         double min = 0; double max = 5000;
         redis.clients.jedis.params.ZRangeParams params = null;
         long opssCounter = 0;
         long targetOppsCount = 200;
-        TestMultiThread.fireTest(connection,100, "100ThreadTest", 150);
         long startTime = System.currentTimeMillis();
 
         for (int x = 1; x<(targetOppsCount+1); x++){
@@ -110,16 +115,16 @@ public class Main
         //this script removed any entries stored in the SortedSet that are older than
         //current time in seconds - 100 seconds
         String luaScript =
-                "local stringKeyNameWithRouting = ARGV[1]..'{'..KEYS[1]..'}' "+
-                        "local ssname = 'z:'..stringKeyNameWithRouting "+
-                        "local uuid = ARGV[2] "+
-                        "local incr_amnt = ARGV[3] "+
-                        "local ts_score = redis.call('TIME')[1] "+
-                        "local result = 'duplicate [fail]' "+
-                        "if redis.call('ZINCRBY',ssname,ts_score,uuid) == ts_score then "+
-                        "redis.call('incrby',stringKeyNameWithRouting,incr_amnt) "+
-                        "redis.call('ZREMRANGEBYRANK', ssname, (ts_score-100), 0) "+
-                        "result = 'success' end return {ssname,result}";
+            "local stringKeyNameWithRouting = ARGV[1]..'{'..KEYS[1]..'}' "+
+                "local ssname = 'z:'..stringKeyNameWithRouting "+
+                "local uuid = ARGV[2] "+
+                "local incr_amnt = ARGV[3] "+
+                "local ts_score = redis.call('TIME')[1] "+
+                "local result = 'duplicate [fail]' "+
+                "if redis.call('ZINCRBY',ssname,ts_score,uuid) == ts_score then "+
+                "redis.call('incrby',stringKeyNameWithRouting,incr_amnt) "+
+                "redis.call('ZREMRANGEBYRANK', ssname, (ts_score-100), 0) "+
+                "result = 'success' end return {ssname,result}";
         long timestamp = System.currentTimeMillis();
         Object luaResponse = jedis.eval(luaScript,1,routingValue,stringKeyName,""+uuid,"100");
         //System.out.println("\nResults from Lua: [SortedSetKeyName] [result]  \n"+luaResponse);
@@ -197,7 +202,7 @@ class JedisConnectionHelper {
         settings.setNumTestsPerEvictionRun(10);
         settings.setPoolMaxIdle(5); //this means less stale connections
         settings.setPoolMinIdle(0);
-        settings.setRequestTimeoutMillis(1200);
+        settings.setRequestTimeoutMillis(100);
         settings.setTestOnReturn(false); // if idle, they will be mostly removed anyway
         settings.setTestOnCreate(true);
 
@@ -311,8 +316,8 @@ class JedisConnectionHelper {
     }
 
     private static SSLSocketFactory createSslSocketFactory(
-            String caCertPath, String caCertPassword, String userCertPath, String userCertPassword)
-            throws IOException, GeneralSecurityException {
+        String caCertPath, String caCertPassword, String userCertPath, String userCertPassword)
+        throws IOException, GeneralSecurityException {
 
         KeyStore keyStore = KeyStore.getInstance("pkcs12");
         keyStore.load(new FileInputStream(userCertPath), userCertPassword.toCharArray());
@@ -350,8 +355,9 @@ class JedisConnectionHelper {
 
         Builder builder = new Builder(clientConfigs);
         builder.circuitBreakerSlidingWindowSize(10);
+        // sliding window size should be less than connection pool size
         builder.circuitBreakerSlidingWindowMinCalls(1);
-        builder.circuitBreakerFailureRateThreshold(100.0f);
+        builder.circuitBreakerFailureRateThreshold(1.0f); //This has What impact?
 
         java.util.List<java.lang.Class> circuitBreakerList = new ArrayList<java.lang.Class>();
         circuitBreakerList.add(JedisConnectionException.class);
@@ -359,7 +365,11 @@ class JedisConnectionHelper {
         //circuitBreakerList.add(java.net.SocketTimeoutException.class);
         builder.circuitBreakerIncludedExceptionList(circuitBreakerList);
         builder.retryWaitDuration(10);
-        builder.retryMaxAttempts(1);
+        builder.retryMaxAttempts(1); //edited by Owen back to 1 Aug 8 8:39 AM Central
+        builder.retryWaitDurationExponentialBackoffMultiplier(1);
+
+
+        //builder.circuitBreakerSlidingWindowType();
 
         MultiClusterPooledConnectionProvider provider = new MultiClusterPooledConnectionProvider(builder.build());
         FailoverReporter reporter = new FailoverReporter();
@@ -385,30 +395,30 @@ class JedisConnectionHelper {
             password = password.split("@")[0];
             System.out.println("\n\nUsing user: "+user+" / password l!3*^rs@"+password);
             clientConfig = DefaultJedisClientConfig.builder().user(user).password(password)
-                    .connectionTimeoutMillis(bs.getConnectionTimeoutMillis()).socketTimeoutMillis(bs.getRequestTimeoutMillis()).build(); // timeout and client settings
+                .connectionTimeoutMillis(bs.getConnectionTimeoutMillis()).socketTimeoutMillis(bs.getRequestTimeoutMillis()).build(); // timeout and client settings
 
         }
         else {
             clientConfig = DefaultJedisClientConfig.builder()
-                    .connectionTimeoutMillis(bs.getConnectionTimeoutMillis()).socketTimeoutMillis(bs.getRequestTimeoutMillis()).build(); // timeout and client settings
+                .connectionTimeoutMillis(bs.getConnectionTimeoutMillis()).socketTimeoutMillis(bs.getRequestTimeoutMillis()).build(); // timeout and client settings
         }
         if(bs.isUseSSL()){ // manage client-side certificates to allow SSL handshake for connections
             SSLSocketFactory sslFactory = null;
             try{
                 sslFactory = createSslSocketFactory(
-                        bs.getCaCertPath(),
-                        bs.getCaCertPassword(), // use the password you specified for keytool command
-                        bs.getUserCertPath(),
-                        bs.getUserCertPassword() // use the password you specified for openssl command
+                    bs.getCaCertPath(),
+                    bs.getCaCertPassword(), // use the password you specified for keytool command
+                    bs.getUserCertPath(),
+                    bs.getUserCertPassword() // use the password you specified for openssl command
                 );
             }catch(Throwable sslStuff){
                 sslStuff.printStackTrace();
                 System.exit(1);
             }
             clientConfig = DefaultJedisClientConfig.builder().user(bs.getUserName()).password(bs.getPassword())
-                    .connectionTimeoutMillis(bs.getConnectionTimeoutMillis()).socketTimeoutMillis(bs.getRequestTimeoutMillis())
-                    .sslSocketFactory(sslFactory) // key/trust details
-                    .ssl(true).build();
+                .connectionTimeoutMillis(bs.getConnectionTimeoutMillis()).socketTimeoutMillis(bs.getRequestTimeoutMillis())
+                .sslSocketFactory(sslFactory) // key/trust details
+                .ssl(true).build();
         }
         GenericObjectPoolConfig<Connection> poolConfig = new ConnectionPoolConfig();
         poolConfig.setMaxIdle(bs.getPoolMaxIdle());
@@ -433,7 +443,7 @@ class JedisConnectionHelperSettings {
     private int redisPort = 6379;
     private String userName = "default";
     private String password = "";
-    private int maxConnections = 5; // these are best shared
+    private int maxConnections = 10; // these are best shared
     private int connectionTimeoutMillis = 1000;
     private int requestTimeoutMillis = 200;
     private int poolMaxIdle = 5;
@@ -611,9 +621,9 @@ class JedisConnectionHelperSettings {
 
     public String toString(){
         return "\nRedisUserName = "+getUserName()+"\nUsePassword = "+isUsePassword()+"\nUseSSL = "+isUseSSL()+ "\nRedisHost = "+getRedisHost()+
-                "\nRedisPort = "+getRedisPort()+"\nMaxConnections = "+getMaxConnections()+
-                "\nRequestTimeoutMilliseconds = "+getRequestTimeoutMillis()+"\nConnectionTimeOutMilliseconds = "+
-                getConnectionTimeoutMillis();
+            "\nRedisPort = "+getRedisPort()+"\nMaxConnections = "+getMaxConnections()+
+            "\nRequestTimeoutMilliseconds = "+getRequestTimeoutMillis()+"\nConnectionTimeOutMilliseconds = "+
+            getConnectionTimeoutMillis();
     }
 
     public String getTrustStoreFilePath() {
